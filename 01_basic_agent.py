@@ -1,11 +1,16 @@
-from utils import get_openai_client, SYSTEM_PROMPT, normalize_messages
+from utils import get_openai_client, get_prompt, normalize_messages
+from langsmith import traceable
+from langsmith.wrappers import wrap_openai
 import os
 import subprocess
 import json
 
 client, AZURE_GPT41_MODEL = get_openai_client()
+client = wrap_openai(client)  # Enable LangSmith tracing
 
+SYSTEM_PROMPT = get_prompt('basic')
 
+@traceable(run_type="tool", name="Bash Executor")
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
@@ -33,6 +38,7 @@ TOOLS = [{
     }
 }]
 
+@traceable(name="Agent Loop")
 def agent_loop(messages: list):
     # Prepend system message if not already present
     if not messages or messages[0].get("role") != "system":

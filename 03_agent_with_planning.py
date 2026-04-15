@@ -4,17 +4,112 @@ from langsmith.wrappers import wrap_openai
 import subprocess
 import json
 from pathlib import Path
+from dataclasses import dataclass, field
 
 client, AZURE_GPT41_MODEL = get_openai_client()
 client = wrap_openai(client)  # Enable LangSmith tracing
 
 WORKDIR = Path.cwd()
-SYSTEM_PROMPT = get_prompt('basic')
+SYSTEM_PROMPT = get_prompt(prompt_type='planner',workdir=WORKDIR)
+PLAN_REMINDER_INTERVAL = 3
 
-def safe_path(p: str) -> Path:
-    path = (WORKDIR / p).resolve()
+
+@dataclass
+class Task:
+    content: str 
+    status: str = 'pending'
+    active_form: str = ''
+
+@dataclass
+class TaskList:
+    tasks: list[Task] = field(default_factory=list)
+    round_since_update: int = 0
+
+
+class TaskManager:
+    def __init__(self):
+        self.state = TaskList()
+
+    @traceable(run_type="tool", name="Update Plan")
+    def update_plan(self, items: list) -> str:
+
+        if len(items) > 12:
+            raise ValueError("Keep the session plan short (max 12 items)")
+        
+        normalized = []
+        in_progress_count = 0
+        
+        for index, raw_item in enumerate(items):
+            content = str(raw_item.get("content", "")).strip()
+            status = str(raw_item.get("status", "pending")).lower()
+            active_form = str(raw_item.get("activeForm", "")).strip()
+            if not content:
+                raise ValueError(f"Item {index}: content required")
+            
+            if status not in {"pending", "in_progress", "completed"}:
+                raise ValueError(f"Item {index}: invalid status '{status}'")
+            
+            if status == "in_progress":
+                in_progress_count += 1
+
+            normalized.append(
+                Task(
+                    content=content,
+                    status=status,
+                    active_form=active_form,
+                ))
+            
+        if in_progress_count > 1:
+            raise ValueError("Only one plan item can be in_progress")
+        
+        self.state.items = normalized
+        self.state.rounds_since_update = 0
+
+        return self.render_plan()
+    
+
+    def note_round_without_update(self) -> None:
+        self.state.rounds_since_update += 1
+
+    def reminder(self) -> str | None:
+        if not self.state.items:
+            return None
+        if self.state.rounds_since_update < PLAN_REMINDER_INTERVAL:
+            return None
+        return "<reminder>Refresh your current plan before continuing.</reminder>"
+    
+    def render_plan(self) -> str:
+
+        if not self.state.items:
+            return "No session plan yet."
+        
+        lines = []
+        for item in self.state.items:
+            marker = {
+                "pending": "[ ]",
+                "in_progress": "[>]",
+                "completed": "[x]",
+            }[item.status]
+            
+            line = f"{marker} {item.content}"
+            
+            if item.status == "in_progress" and item.active_form:
+                line += f" ({item.active_form})"
+            lines.append(line)
+        
+        completed = sum(1 for item in self.state.items if item.status == "completed")
+        
+        lines.append(f"\n({completed}/{len(self.state.items)} completed)")
+        
+        return "\n".join(lines)
+
+
+planner = TaskManager()
+
+def safe_path(path_str: str) -> Path:
+    path = (WORKDIR / path_str).resolve()
     if not path.is_relative_to(WORKDIR):
-        raise ValueError(f"Path escapes workspace: {p}")
+        raise ValueError(f"Path escapes workspace: {path_str}")
     return path
 
 @traceable(run_type="tool", name="Bash Executor")
@@ -31,8 +126,8 @@ def run_bash(command: str) -> str:
         return "Error: Timeout (120s)"
     except (FileNotFoundError, OSError) as e:
         return f"Error: {e}"
-
-@traceable(run_type="tool", name="File Reader") 
+    
+@traceable(run_type="tool", name="File Reader")
 def run_read(path: str, limit: int = 0) -> str:
     try:
         text = safe_path(path).read_text()
@@ -76,6 +171,7 @@ TOOL_HANDLERS = {
     "read_file":  lambda **kw: run_read(kw["path"], kw.get("limit")),
     "write_file": lambda **kw: run_write(kw["path"], kw["content"]),
     "edit_file":  lambda **kw: run_edit(kw["path"], kw["old_text"], kw["new_text"]),
+    "todo": lambda **kw: planner.update_plan(kw["items"]),
 }
 
 TOOLS = [
@@ -127,9 +223,40 @@ TOOLS = [
             },
         }
     },
-]
+    {
+        "type": "function",
+        "function": {
+            "name": "todo",
+            "description": "Rewrite the current session plan for multi-step work.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "content": {"type": "string"},
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["pending", "in_progress", "completed"],
+                                },
+                                "activeForm": {
+                                    "type": "string",
+                                    "description": "Optional present-continuous label.",
+                                },
+                            },
+                            "required": ["content", "status"],
+                        },
+                    },
+                },
+                "required": ["items"],
+            },
+        }
+    },
+] ## added 'todo' as tool
 
-@traceable(name="Agent Loop with Tools")
+@traceable(name="Agent Loop with Planning")
 def agent_loop(messages: list):
     # Prepend system message if not already present
     if not messages or messages[0].get("role") != "system":
@@ -148,6 +275,7 @@ def agent_loop(messages: list):
 
         # Get assistant message
         assistant_msg = response.choices[0].message
+
 
         # Append assistant turn
         msg_dict = {"role": "assistant", "content": assistant_msg.content or ""}
@@ -169,6 +297,8 @@ def agent_loop(messages: list):
         if not assistant_msg.tool_calls:
             return assistant_msg.content
 
+        used_todo = False
+
         # Execute each tool call, collect results
         for tc in assistant_msg.tool_calls:
             args = json.loads(tc.function.arguments)
@@ -177,12 +307,22 @@ def agent_loop(messages: list):
             handler = TOOL_HANDLERS.get(name)
             output = handler(**args) if handler else f"UNKOWN TOOL is called: {name}"
             print(f'>> {name}')
+            if name == 'todo':
+                used_todo = True
 
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
                 "content": output
             })
+
+        if used_todo:
+            planner.state.rounds_since_update = 0
+        else:
+            planner.note_round_without_update()
+            reminder = planner.reminder()
+            if reminder:
+                messages.insert(0, {"type": "text", "text": reminder})
 
 
 if __name__ == "__main__":
@@ -198,4 +338,7 @@ if __name__ == "__main__":
         final_response = agent_loop(history)
         print(final_response)
         print()
+
+
+
 

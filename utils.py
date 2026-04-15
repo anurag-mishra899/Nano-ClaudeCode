@@ -21,7 +21,48 @@ AZURE_OPENAI_VERSION=os.getenv('AZURE_OPENAI_VERSION')
 AZURE_GPT4O_MODEL=os.getenv('AZURE_GPT4O_MODEL')
 AZURE_GPT41_MODEL=os.getenv('AZURE_GPT41_MODEL')
 
-SYSTEM_PROMPT = f"You are a coding agent at {os.getcwd()}. Use bash to solve tasks. Act, don't explain."
+
+def get_prompt(prompt_type: str = "basic", **kwargs) -> str:
+    """
+    Returns system prompt based on type.
+    
+    Args:
+        prompt_type: "basic" | "planner"
+        kwargs: dynamic context (e.g., workdir)
+    """
+
+    workdir = kwargs.get("workdir", os.getcwd())
+
+    if prompt_type.lower() == "basic":
+        return f"""
+                You are a coding agent working in {workdir}.
+                Use bash to solve tasks.
+                Act, don't explain.
+                """
+
+    elif prompt_type.lower() == "planner":
+        return f"""
+                You are a coding agent working in {workdir}.
+
+                PLANNING RULES:
+                - Use the `todo` tool for multi-step tasks
+                - Keep EXACTLY one step in_progress
+                - Mark steps completed when done
+                - Continuously update the plan
+
+                EXECUTION RULES:
+                - Prefer tools over explanation
+                - Do not produce unnecessary prose
+
+                Loop:
+                1. Plan (todo)
+                2. Execute (bash)
+                3. Update plan
+                4. Repeat
+                """
+
+    else:
+        raise ValueError(f"Unknown prompt_type: {prompt_type}")
 
 
 def get_openai_client():
