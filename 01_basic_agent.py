@@ -1,46 +1,10 @@
-from openai import AzureOpenAI
-from dotenv import load_dotenv
+from utils import get_openai_client, SYSTEM_PROMPT, normalize_messages
 import os
 import subprocess
 import json
-try:
-    import readline
-    # #143 UTF-8 backspace fix for macOS libedit
-    readline.parse_and_bind('set bind-tty-special-chars off')
-    readline.parse_and_bind('set input-meta on')
-    readline.parse_and_bind('set output-meta on')
-    readline.parse_and_bind('set convert-meta off')
-    readline.parse_and_bind('set enable-meta-keybindings on')
-except ImportError:
-    pass
 
+client, AZURE_GPT41_MODEL = get_openai_client()
 
-load_dotenv()
-
-# Azure OpenAI Configuration
-AZURE_OPENAI_API_KEY= os.getenv('AZURE_OPENAI_API_KEY')
-AZURE_OPENAI_ENDPOINT=os.getenv('AZURE_OPENAI_ENDPOINT')
-AZURE_OPENAI_VERSION=os.getenv('AZURE_OPENAI_VERSION')
-AZURE_GPT4O_MODEL=os.getenv('AZURE_GPT4O_MODEL')
-AZURE_GPT41_MODEL=os.getenv('AZURE_GPT41_MODEL')
-
-client = AzureOpenAI(
-    api_version=AZURE_OPENAI_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-SYSTEM = f"You are a coding agent at {os.getcwd()}. Use bash to solve tasks. Act, don't explain."
-
-TOOLS = [{
-    "type":"function",
-    "name": "bash",
-    "description": "Run a shell command.",
-    "parameters": {
-        "type": "object",
-        "properties": {"command": {"type": "string"}},
-        "required": ["command"],
-    },
-}]
 
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
@@ -55,40 +19,72 @@ def run_bash(command: str) -> str:
         return "Error: Timeout (120s)"
     except (FileNotFoundError, OSError) as e:
         return f"Error: {e}"
-    
+
+TOOLS = [{
+    "type": "function",
+    "function": {
+        "name": "bash",
+        "description": "Run a shell command.",
+        "parameters": {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    }
+}]
 
 def agent_loop(messages: list):
+    # Prepend system message if not already present
+    if not messages or messages[0].get("role") != "system":
+        messages.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
+
     while True:
-        response = client.responses.create(
+        # Normalize messages before API call
+        clean_messages = normalize_messages(messages)
+
+        response = client.chat.completions.create(
             model=AZURE_GPT41_MODEL,
-            instructions=SYSTEM,
-            input=messages,
+            messages=clean_messages,
             tools=TOOLS,
-            max_output_tokens=8000,
+            max_tokens=8000,
         )
+
+        # Get assistant message
+        assistant_msg = response.choices[0].message
+
         # Append assistant turn
-        messages += response.output
+        msg_dict = {"role": "assistant", "content": assistant_msg.content or ""}
+        if assistant_msg.tool_calls:
+            msg_dict["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments
+                    }
+                }
+                for tc in assistant_msg.tool_calls
+            ]
+        messages.append(msg_dict)
 
-        #print(messages)
+        # Check if there are tool calls
+        if not assistant_msg.tool_calls:
+            return assistant_msg.content
 
-        tool_calls = [item for item in response.output if item.type=='function_call']
-
-        if not tool_calls:
-            #print(response)
-            return response
-        
         # Execute each tool call, collect results
-
-        for block in tool_calls:
-            args = json.loads(block.arguments)
+        for tc in assistant_msg.tool_calls:
+            args = json.loads(tc.function.arguments)
             print(f"\033[33m$ {args['command']}\033[0m")
             output = run_bash(args["command"])
-            #print(output[:200])
-            messages.append({"type": "function_call_output", 
-                            "call_id": block.call_id,
-                            "output": output})
 
-
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": output
+            })
+        
+        print(messages)
 
 if __name__ == "__main__":
     history = []
@@ -101,5 +97,5 @@ if __name__ == "__main__":
             break
         history.append({"role": "user", "content": query})
         final_response = agent_loop(history)
-        print(final_response.output_text)
+        print(final_response)
         print()
