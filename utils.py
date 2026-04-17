@@ -60,6 +60,11 @@ def get_prompt(prompt_type: str = "basic", **kwargs) -> str:
                 3. Update plan
                 4. Repeat
                 """
+    
+    elif prompt_type.lower() == 'sub-agent':
+        SYSTEM = f"You are a coding agent at {workdir}. Use the task tool to delegate exploration or subtasks."
+        SUBAGENT_SYSTEM = f"You are a coding subagent at {workdir}. Complete the given task, then summarize your findings."
+        return SYSTEM, SUBAGENT_SYSTEM
 
     else:
         raise ValueError(f"Unknown prompt_type: {prompt_type}")
