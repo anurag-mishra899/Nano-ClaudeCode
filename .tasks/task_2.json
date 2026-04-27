@@ -1,0 +1,9 @@
+{
+  "id": 2,
+  "subject": "Refactor: Parse",
+  "description": "Refactor the parsing logic. First step in the pipeline.",
+  "status": "pending",
+  "blockedBy": [],
+  "blocks": [],
+  "owner": ""
+}

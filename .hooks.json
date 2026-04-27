@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "bash", "command": "echo 'Auditing bash command' >&2; exit 0"}
+    ],
+    "SessionStart": [
+      {"command": "echo 'Agent session started'"}
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": 4,
+  "subject": "Refactor: Emit",
+  "description": "Refactor the emit logic. Runs after parse and parallel to transform.",
+  "status": "pending",
+  "blockedBy": [
+    2
+  ],
+  "blocks": [],
+  "owner": ""
+}

@@ -1,0 +1,10 @@
+{
+  "id": "00d1cd25",
+  "status": "completed",
+  "result": "(no output)",
+  "command": "sleep 2",
+  "started_at": 1777208297.0075,
+  "finished_at": 1777208299.024162,
+  "result_preview": "(no output)",
+  "output_file": ".runtime-tasks/00d1cd25.log"
+}

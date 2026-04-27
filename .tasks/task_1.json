@@ -1,0 +1,9 @@
+{
+  "id": 1,
+  "subject": "Create folder and 3 .txt files with name written inside",
+  "description": "Make a new folder, create test_1.txt, test_2.txt, test_3.txt, and write each file's name as its content.",
+  "status": "completed",
+  "blockedBy": [],
+  "blocks": [],
+  "owner": ""
+}

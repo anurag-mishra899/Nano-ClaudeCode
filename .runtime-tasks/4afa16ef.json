@@ -1,0 +1,10 @@
+{
+  "id": "4afa16ef",
+  "status": "completed",
+  "result": "(no output)",
+  "command": "sleep 6",
+  "started_at": 1777208297.017774,
+  "finished_at": 1777208303.029769,
+  "result_preview": "(no output)",
+  "output_file": ".runtime-tasks/4afa16ef.log"
+}
