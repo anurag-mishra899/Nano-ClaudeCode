@@ -25,7 +25,6 @@ Nano-ClaudeCode is a collection of Python scripts and utilities demonstrating va
 | `15_autonomous_agents.py` | Autonomous agents with idle cycle polling. Agents find and claim work from task board without explicit instructions. |
 | `16_worktree_task_isolation.py` | Directory-level isolation for parallel task execution. Uses git worktrees for non-colliding parallel work. |
 | `utils.py` | Shared utility functions for OpenAI client initialization, prompt management, and message normalization. |
-| `hello.py` | Simple test/example file. |
 
 ## Installation
 
@@ -50,20 +49,32 @@ Nano-ClaudeCode is a collection of Python scripts and utilities demonstrating va
    uv pip install -r requirements.txt
    ```
 
+4. Configure environment variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your Azure OpenAI credentials
+   ```
+
 ### Alternative Installation Methods
 Using pip:
 ```bash
 pip install -r requirements.txt
+cp .env.example .env
+# Edit .env and add your Azure OpenAI credentials
 ```
 
 Using Poetry:
 ```bash
 poetry install
+cp .env.example .env
+# Edit .env and add your Azure OpenAI credentials
 ```
 
 Using pyproject.toml:
 ```bash
 pip install .
+cp .env.example .env
+# Edit .env and add your Azure OpenAI credentials
 ```
 
 ## Usage
