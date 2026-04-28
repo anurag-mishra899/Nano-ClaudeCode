@@ -46,34 +46,27 @@ Nano-ClaudeCode is a collection of Python scripts and utilities demonstrating va
    ```bash
    uv venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   uv pip install -r requirements.txt
+   uv pip install -e .
    ```
 
 4. Configure environment variables:
    ```bash
-   cp .env.example .env
+   cp example.env .env
    # Edit .env and add your Azure OpenAI credentials
    ```
 
 ### Alternative Installation Methods
 Using pip:
 ```bash
-pip install -r requirements.txt
-cp .env.example .env
+pip install -e .
+cp example.env .env
 # Edit .env and add your Azure OpenAI credentials
 ```
 
 Using Poetry:
 ```bash
 poetry install
-cp .env.example .env
-# Edit .env and add your Azure OpenAI credentials
-```
-
-Using pyproject.toml:
-```bash
-pip install .
-cp .env.example .env
+cp example.env .env
 # Edit .env and add your Azure OpenAI credentials
 ```
 
